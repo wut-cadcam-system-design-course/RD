@@ -1,0 +1,3 @@
+[submodule "external/occt"]
+	path = external/occt
+	url = https://github.com/wut-cadcam-system-design-course/OCCT.git
