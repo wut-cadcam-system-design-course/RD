@@ -1,3 +1,7 @@
 # jebrains
 /**/.idea
 cmake-build-debug
+
+# occt binaries
+/external/occt-build
+/external/occt-install
