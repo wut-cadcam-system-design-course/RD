@@ -44,6 +44,7 @@ class GlfwOcctView : protected AIS_ViewController
  private:
   //! Create GLFW window.
   void initWindow(int theWidth, int theHeight, const char* theTitle);
+  void initUIWindow(int theWidth, int theHeight, const char* theTitle);
 
   //! Create 3D Viewer.
   void initViewer();
@@ -56,6 +57,10 @@ class GlfwOcctView : protected AIS_ViewController
 
   //! Clean up before .
   void cleanup();
+
+  void initUI();
+  void processUI();
+  void cleanupUI();
 
   //! @name GLWF callbacks
  private:
@@ -111,6 +116,7 @@ class GlfwOcctView : protected AIS_ViewController
 
  private:
   Handle(GlfwOcctWindow) myOcctWindow;
+  Handle(GlfwOcctWindow) myUIWindow;
   Handle(V3d_View) myView;
   Handle(AIS_InteractiveContext) myContext;
 };
