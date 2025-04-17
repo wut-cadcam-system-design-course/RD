@@ -31,6 +31,10 @@
 #include <OpenGl_GraphicDriver.hxx>
 #include <TopAbs_ShapeEnum.hxx>
 
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_opengl3.h>
+#include <imgui.h>
+
 #include <iostream>
 
 #include <GLFW/glfw3.h>
@@ -100,14 +104,20 @@ void GlfwOcctView::errorCallback(int theError, const char* theDescription)
 // ================================================================
 void GlfwOcctView::run()
 {
+  glfwSetErrorCallback(GlfwOcctView::errorCallback);
+  glfwInit();
   initWindow(800, 600, "glfw occt");
+  initUIWindow(400, 600, "glfw ui");
   initViewer();
   initDemoScene();
   if (myView.IsNull()) { return; }
 
   myView->MustBeResized();
   myOcctWindow->Map();
+  myUIWindow->Map();
+  initUI();
   mainloop();
+  cleanupUI();
   cleanup();
 }
 
@@ -117,8 +127,6 @@ void GlfwOcctView::run()
 // ================================================================
 void GlfwOcctView::initWindow(int theWidth, int theHeight, const char* theTitle)
 {
-  glfwSetErrorCallback(GlfwOcctView::errorCallback);
-  glfwInit();
   const bool toAskCoreProfile = true;
   if (toAskCoreProfile)
   {
@@ -138,6 +146,19 @@ void GlfwOcctView::initWindow(int theWidth, int theHeight, const char* theTitle)
   glfwSetScrollCallback(myOcctWindow->getGlfwWindow(), GlfwOcctView::onMouseScrollCallback);
   glfwSetMouseButtonCallback(myOcctWindow->getGlfwWindow(), GlfwOcctView::onMouseButtonCallback);
   glfwSetCursorPosCallback(myOcctWindow->getGlfwWindow(), GlfwOcctView::onMouseMoveCallback);
+}
+
+void GlfwOcctView::initUIWindow(int theWidth, int theHeight, const char* theTitle)
+{
+  int occtWindowX, occtWindowY;
+  glfwGetWindowPos(myOcctWindow->getGlfwWindow(), &occtWindowX, &occtWindowY);
+  int occtWindowWidth;
+  glfwGetWindowSize(myOcctWindow->getGlfwWindow(), &occtWindowWidth, nullptr);
+
+  // glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+  // glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+  myUIWindow = new GlfwOcctWindow(theWidth, theHeight, theTitle);
+  glfwSetWindowPos(myUIWindow->getGlfwWindow(), occtWindowX + occtWindowWidth, occtWindowY);
 }
 
 // ================================================================
@@ -204,7 +225,15 @@ void GlfwOcctView::mainloop()
     // and glfwWaitEvents() for rendering on demand (something actually happened in the viewer)
     // glfwPollEvents();
     glfwWaitEvents();
-    if (!myView.IsNull()) { FlushViewEvents(myContext, myView, true); }
+    if (!myView.IsNull())
+    {
+      FlushViewEvents(myContext, myView, true);
+
+      // render UI
+      glfwMakeContextCurrent(myUIWindow->getGlfwWindow());
+      processUI();
+      glfwSwapBuffers(myUIWindow->getGlfwWindow());
+    }
   }
 }
 
@@ -216,6 +245,7 @@ void GlfwOcctView::cleanup()
 {
   if (!myView.IsNull()) { myView->Remove(); }
   if (!myOcctWindow.IsNull()) { myOcctWindow->Close(); }
+  if (!myUIWindow.IsNull()) { myUIWindow->Close(); }
   glfwTerminate();
 }
 
@@ -267,4 +297,50 @@ void GlfwOcctView::onMouseMove(int thePosX, int thePosY)
 {
   const Graphic3d_Vec2i aNewPos(thePosX, thePosY);
   if (!myView.IsNull()) { UpdateMousePosition(aNewPos, PressedMouseButtons(), LastMouseFlags(), false); }
+}
+
+void GlfwOcctView::initUI()
+{
+  // Setup Dear ImGui context
+  const char* glsl_version = "#version 330";
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGuiIO& io = ImGui::GetIO();
+  // Setup Platform/Renderer bindings
+  ImGui_ImplGlfw_InitForOpenGL(myUIWindow->getGlfwWindow(), true);
+  ImGui_ImplOpenGL3_Init(glsl_version);
+  // Setup Dear ImGui style
+  ImGui::StyleColorsDark();
+}
+
+void GlfwOcctView::processUI()
+{
+  // clear UI window
+  glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT);
+
+  // feed inputs to dear imgui, start new frame
+  ImGui_ImplOpenGL3_NewFrame();
+  ImGui_ImplGlfw_NewFrame();
+  ImGui::NewFrame();
+
+  // display content
+  ImGui::ShowDemoWindow();
+  ImGui::Begin("Test");
+  {
+    ImGui::Text("Test");
+  }
+  ImGui::End();
+  //
+
+  // Rendering
+  ImGui::Render();
+  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+void GlfwOcctView::cleanupUI()
+{
+  ImGui_ImplOpenGL3_Shutdown();
+  ImGui_ImplGlfw_Shutdown();
+  ImGui::DestroyContext();
 }
