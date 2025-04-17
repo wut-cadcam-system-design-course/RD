@@ -1,3 +1,6 @@
 [submodule "external/occt"]
 	path = external/occt
 	url = https://github.com/wut-cadcam-system-design-course/OCCT.git
+[submodule "external/imgui"]
+	path = external/imgui
+	url = https://github.com/ocornut/imgui.git
