@@ -34,10 +34,22 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <iostream>
 
 #include <GLFW/glfw3.h>
+
+#ifdef _WIN32
+#include <WNT_WClass.hxx>
+#include <WNT_Window.hxx>
+#elif defined(__APPLE__)
+#include <Cocoa_LocalPool.hxx>
+#include <Cocoa_Window.hxx>
+#else
+#include <X11/Xlib.h>
+#include <Xw_Window.hxx>
+#endif
 
 namespace
 {
@@ -66,7 +78,56 @@ namespace
     if ((theFlags & GLFW_MOD_SUPER) != 0) { aFlags |= Aspect_VKeyFlags_META; }
     return aFlags;
   }
+
+  static void pixMapToGL(Image_PixMap& src, GLuint& dest)
+  {
+    const int width     = src.Width();
+    const int height    = src.Height();
+    const GLenum format = src.Format() == Image_Format_RGB ? GL_RGB : throw;
+
+    if (dest == 0)
+    {
+      glGenTextures(1, &dest);
+      glBindTexture(GL_TEXTURE_2D, dest);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, src.Data());
+    }
+    else
+    {
+      glBindTexture(GL_TEXTURE_2D, dest);
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, format, GL_UNSIGNED_BYTE, src.Data());
+    }
+  }
 } // namespace
+
+namespace win_data
+{
+  static constexpr int DISPLAY_WIDTH  = 800;
+  static constexpr int DISPLAY_HEIGHT = 600;
+  static constexpr int TEX_WIDTH      = 512;
+  static constexpr int TEX_HEIGHT     = 512;
+
+  struct DockWinId
+  {
+    static const std::string content;
+    static const std::string gui;
+  };
+
+  const std::string DockWinId::content = "Content";
+  const std::string DockWinId::gui     = "Gui";
+
+  struct ContentWin
+  {
+    static ImVec2 size;
+    static ImVec2 pos; // (left, top)
+  };
+
+  ImVec2 ContentWin::size = { 0, 0 };
+  ImVec2 ContentWin::pos  = { 0, 0 };
+} // namespace win_data
 
 // ================================================================
 // Function : GlfwOcctView
@@ -106,15 +167,13 @@ void GlfwOcctView::run()
 {
   glfwSetErrorCallback(GlfwOcctView::errorCallback);
   glfwInit();
-  initWindow(800, 600, "glfw occt");
-  initUIWindow(400, 600, "glfw ui");
+  initWindow(win_data::DISPLAY_WIDTH, win_data::DISPLAY_HEIGHT, "RD");
   initViewer();
   initDemoScene();
   if (myView.IsNull()) { return; }
 
   myView->MustBeResized();
   myOcctWindow->Map();
-  myUIWindow->Map();
   initUI();
   mainloop();
   cleanupUI();
@@ -148,19 +207,6 @@ void GlfwOcctView::initWindow(int theWidth, int theHeight, const char* theTitle)
   glfwSetCursorPosCallback(myOcctWindow->getGlfwWindow(), GlfwOcctView::onMouseMoveCallback);
 }
 
-void GlfwOcctView::initUIWindow(int theWidth, int theHeight, const char* theTitle)
-{
-  int occtWindowX, occtWindowY;
-  glfwGetWindowPos(myOcctWindow->getGlfwWindow(), &occtWindowX, &occtWindowY);
-  int occtWindowWidth;
-  glfwGetWindowSize(myOcctWindow->getGlfwWindow(), &occtWindowWidth, nullptr);
-
-  // glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
-  // glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-  myUIWindow = new GlfwOcctWindow(theWidth, theHeight, theTitle);
-  glfwSetWindowPos(myUIWindow->getGlfwWindow(), occtWindowX + occtWindowWidth, occtWindowY);
-}
-
 // ================================================================
 // Function : initViewer
 // Purpose  :
@@ -169,17 +215,41 @@ void GlfwOcctView::initViewer()
 {
   if (myOcctWindow.IsNull() || myOcctWindow->getGlfwWindow() == nullptr) { return; }
 
-  Handle(OpenGl_GraphicDriver) aGraphicDriver = new OpenGl_GraphicDriver(myOcctWindow->GetDisplay(), false);
-  Handle(V3d_Viewer) aViewer                  = new V3d_Viewer(aGraphicDriver);
-  aViewer->SetDefaultLights();
-  aViewer->SetLightOn();
-  aViewer->SetDefaultTypeOfView(V3d_PERSPECTIVE);
-  aViewer->ActivateGrid(Aspect_GT_Rectangular, Aspect_GDM_Lines);
-  myView = aViewer->CreateView();
-  myView->SetImmediateUpdate(false);
-  myView->SetWindow(myOcctWindow, myOcctWindow->NativeGlContext());
-  myView->ChangeRenderingParams().ToShowStats = true;
-  myContext                                   = new AIS_InteractiveContext(aViewer);
+  // create graphic driver
+  Handle(Aspect_DisplayConnection) aDisp = new Aspect_DisplayConnection();
+  Handle(OpenGl_GraphicDriver) aDriver   = new OpenGl_GraphicDriver(aDisp, true);
+  aDriver->ChangeOptions().ffpEnable     = false;
+  aDriver->ChangeOptions().swapInterval  = 0; // no window, no swap
+
+  // create viewer and AIS context
+  Handle(V3d_Viewer) myViewer = new V3d_Viewer(aDriver);
+  myContext                   = new AIS_InteractiveContext(myViewer);
+
+  // viewer setup
+  myViewer->SetDefaultLights();
+  myViewer->SetLightOn();
+  myViewer->SetDefaultTypeOfView(V3d_PERSPECTIVE);
+  myViewer->ActivateGrid(Aspect_GT_Rectangular, Aspect_GDM_Lines);
+
+  // create offscreen window
+  const TCollection_AsciiString aWinName("OCCT offscreen window");
+  Graphic3d_Vec2i aWinSize(win_data::TEX_WIDTH, win_data::TEX_HEIGHT);
+#if defined(_WIN32)
+  const TCollection_AsciiString aClassName("OffscreenClass");
+  // empty callback!
+  Handle(WNT_WClass) aWinClass = new WNT_WClass(aClassName.ToCString(), nullptr, 0);
+  Handle(WNT_Window) aWindow =
+      new WNT_Window(aWinName.ToCString(), aWinClass, WS_POPUP, 64, 64, aWinSize.x(), aWinSize.y(), Quantity_NOC_BLACK);
+#elif defined(__APPLE__)
+  Handle(Cocoa_Window) aWindow = new Cocoa_Window(aWinName.ToCString(), 64, 64, aWinSize.x(), aWinSize.y());
+#else
+  Handle(Xw_Window) aWindow = new Xw_Window(aDisp, aWinName.ToCString(), 64, 64, aWinSize.x(), aWinSize.y());
+#endif
+  aWindow->SetVirtual(true);
+
+  // create 3D view from offscreen window
+  myView = myViewer->CreateView();
+  myView->SetWindow(aWindow);
 }
 
 // ================================================================
@@ -217,22 +287,30 @@ void GlfwOcctView::initDemoScene()
 // Function : mainloop
 // Purpose  :
 // ================================================================
+
 void GlfwOcctView::mainloop()
 {
   while (!glfwWindowShouldClose(myOcctWindow->getGlfwWindow()))
   {
     // glfwPollEvents() for continuous rendering (immediate return if there are no new events)
     // and glfwWaitEvents() for rendering on demand (something actually happened in the viewer)
-    // glfwPollEvents();
-    glfwWaitEvents();
+    glfwPollEvents();
+    // glfwWaitEvents();
     if (!myView.IsNull())
     {
+      // render view offscreen
       FlushViewEvents(myContext, myView, true);
+      if (!myView->ToPixMap(myTexture.pixMap, win_data::TEX_WIDTH, win_data::TEX_HEIGHT))
+      {
+        std::cerr << "View dump failed\n";
+      }
+      //
 
-      // render UI
-      glfwMakeContextCurrent(myUIWindow->getGlfwWindow());
-      processUI();
-      glfwSwapBuffers(myUIWindow->getGlfwWindow());
+      // render scene
+      glfwMakeContextCurrent(myOcctWindow->getGlfwWindow());
+      pixMapToGL(myTexture.pixMap, myTexture.glID);
+      render();
+      glfwSwapBuffers(myOcctWindow->getGlfwWindow());
     }
   }
 }
@@ -243,9 +321,9 @@ void GlfwOcctView::mainloop()
 // ================================================================
 void GlfwOcctView::cleanup()
 {
+  glDeleteTextures(1, &myTexture.glID);
   if (!myView.IsNull()) { myView->Remove(); }
   if (!myOcctWindow.IsNull()) { myOcctWindow->Close(); }
-  if (!myUIWindow.IsNull()) { myUIWindow->Close(); }
   glfwTerminate();
 }
 
@@ -301,41 +379,17 @@ void GlfwOcctView::onMouseMove(int thePosX, int thePosY)
 
 void GlfwOcctView::initUI()
 {
-  // Setup Dear ImGui context
+  // setup ImGui context
   const char* glsl_version = "#version 330";
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGuiIO& io = ImGui::GetIO();
-  // Setup Platform/Renderer bindings
-  ImGui_ImplGlfw_InitForOpenGL(myUIWindow->getGlfwWindow(), true);
+  io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+  // setup Platform/Renderer bindings
+  ImGui_ImplGlfw_InitForOpenGL(myOcctWindow->getGlfwWindow(), true);
   ImGui_ImplOpenGL3_Init(glsl_version);
-  // Setup Dear ImGui style
+  // setup ImGui style
   ImGui::StyleColorsDark();
-}
-
-void GlfwOcctView::processUI()
-{
-  // clear UI window
-  glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-  glClear(GL_COLOR_BUFFER_BIT);
-
-  // feed inputs to dear imgui, start new frame
-  ImGui_ImplOpenGL3_NewFrame();
-  ImGui_ImplGlfw_NewFrame();
-  ImGui::NewFrame();
-
-  // display content
-  ImGui::ShowDemoWindow();
-  ImGui::Begin("Test");
-  {
-    ImGui::Text("Test");
-  }
-  ImGui::End();
-  //
-
-  // Rendering
-  ImGui::Render();
-  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 void GlfwOcctView::cleanupUI()
@@ -343,4 +397,115 @@ void GlfwOcctView::cleanupUI()
   ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();
   ImGui::DestroyContext();
+}
+
+void GlfwOcctView::render()
+{
+  // clear window
+  glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT);
+  //
+  // feed inputs to dear imgui, start new frame
+  ImGui_ImplOpenGL3_NewFrame();
+  ImGui_ImplGlfw_NewFrame();
+  ImGui::NewFrame();
+  //
+  // setup docking
+  static ImGuiDockNodeFlags dock_space_flags = ImGuiDockNodeFlags_PassthruCentralNode;
+  ImGuiWindowFlags window_flags              = ImGuiWindowFlags_NoDocking;
+
+  ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+  ImGui::SetNextWindowPos(viewport->Pos);
+  ImGui::SetNextWindowSize(viewport->Size);
+  ImGui::SetNextWindowViewport(viewport->ID);
+
+  window_flags |= ImGuiWindowFlags_MenuBar;
+  window_flags |= ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove;
+  window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+  window_flags |= ImGuiWindowFlags_NoBackground;
+
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
+  ImGui::Begin("Root", nullptr, window_flags);
+  {
+    static bool exit             = false;
+    static bool show_demo_window = false;
+    // Top menu bar
+    if (ImGui::BeginMenuBar())
+    {
+      if (ImGui::BeginMenu("File"))
+      {
+        ImGui::MenuItem("Exit", nullptr, &exit);
+        ImGui::EndMenu();
+      }
+      if (ImGui::BeginMenu("View"))
+      {
+        ImGui::MenuItem("Show Demo Window", nullptr, &show_demo_window);
+        ImGui::EndMenu();
+      }
+      ImGui::EndMenuBar();
+    }
+    // DockSpace
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable)
+    {
+      ImGuiID dock_space_id = ImGui::GetID("RootDockSpace");
+      ImGui::DockSpace(dock_space_id, ImVec2(0.f, 0.f), dock_space_flags);
+
+      static auto first_time = true;
+      if (first_time)
+      {
+        first_time = false;
+        // Clear out existing layout
+        ImGui::DockBuilderRemoveNode(dock_space_id);
+        // Add empty node
+        ImGui::DockBuilderAddNode(dock_space_id, dock_space_flags | ImGuiDockNodeFlags_DockSpace);
+        // Main node should cover entire window
+        ImGui::DockBuilderSetNodeSize(dock_space_id, ImGui::GetWindowSize());
+        // Split root dock node
+        float gui_size = .2f;
+        ImGuiID content_node, gui_node;
+        ImGui::DockBuilderSplitNode(dock_space_id, ImGuiDir_Left, gui_size, &gui_node, &content_node);
+
+        ImGui::DockBuilderDockWindow(win_data::DockWinId::content.c_str(), content_node);
+        ImGui::DockBuilderDockWindow(win_data::DockWinId::gui.c_str(), gui_node);
+        ImGui::DockBuilderFinish(dock_space_id);
+      }
+    }
+
+    if (exit)
+    {
+      // ...
+    }
+    if (show_demo_window) { ImGui::ShowDemoWindow(); }
+  }
+  ImGui::End();
+  ImGui::PopStyleVar(3);
+  //
+  // render view
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
+  ImGui::Begin(win_data::DockWinId::content.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar);
+  {
+    ImVec2 win_pos             = ImGui::GetWindowPos();
+    win_data::ContentWin::pos  = { win_pos.x, win_pos.y };
+    ImVec2 win_size            = ImGui::GetWindowSize();
+    win_data::ContentWin::size = { win_size.x, win_size.y };
+
+    ImGui::Image((ImTextureID)(intptr_t)myTexture.glID, win_size, ImVec2(0, 1), ImVec2(1, 0));
+  }
+  ImGui::End();
+  ImGui::PopStyleVar();
+  //
+  // render UI
+  ImGui::Begin(win_data::DockWinId::gui.c_str());
+  {
+    ImGui::Text("Hello!");
+  }
+  ImGui::End();
+  //
+  // send to imgui renderer
+  ImGui::Render();
+  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }

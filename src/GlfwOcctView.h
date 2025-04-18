@@ -44,7 +44,6 @@ class GlfwOcctView : protected AIS_ViewController
  private:
   //! Create GLFW window.
   void initWindow(int theWidth, int theHeight, const char* theTitle);
-  void initUIWindow(int theWidth, int theHeight, const char* theTitle);
 
   //! Create 3D Viewer.
   void initViewer();
@@ -52,15 +51,17 @@ class GlfwOcctView : protected AIS_ViewController
   //! Fill 3D Viewer with a DEMO items.
   void initDemoScene();
 
+  void initUI();
+
   //! Application event loop.
   void mainloop();
 
   //! Clean up before .
   void cleanup();
 
-  void initUI();
-  void processUI();
   void cleanupUI();
+
+  void render();
 
   //! @name GLWF callbacks
  private:
@@ -116,9 +117,14 @@ class GlfwOcctView : protected AIS_ViewController
 
  private:
   Handle(GlfwOcctWindow) myOcctWindow;
-  Handle(GlfwOcctWindow) myUIWindow;
   Handle(V3d_View) myView;
   Handle(AIS_InteractiveContext) myContext;
+
+  struct
+  {
+    Image_PixMap pixMap;
+    uint32_t glID = 0;
+  } myTexture;
 };
 
 #endif // _GlfwOcctView_Header
