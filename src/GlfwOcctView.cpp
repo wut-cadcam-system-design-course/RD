@@ -51,6 +51,32 @@
 #include <Xw_Window.hxx>
 #endif
 
+namespace win_data
+{
+  static constexpr int DISPLAY_WIDTH  = 800;
+  static constexpr int DISPLAY_HEIGHT = 600;
+  static constexpr int CONTENT_WIDTH  = 512;
+  static constexpr int CONTENT_HEIGHT = 512;
+
+  struct DockWinId
+  {
+    static const std::string content;
+    static const std::string gui;
+  };
+
+  const std::string DockWinId::content = "Content";
+  const std::string DockWinId::gui     = "Gui";
+
+  struct Content
+  {
+    static Graphic3d_Vec2i pos;
+    static Graphic3d_Vec2i size;
+  };
+
+  Graphic3d_Vec2i Content::pos  = Graphic3d_Vec2i(0, 0);
+  Graphic3d_Vec2i Content::size = Graphic3d_Vec2i(0, 0);
+} // namespace win_data
+
 namespace
 {
   //! Convert GLFW mouse button into Aspect_VKeyMouse.
@@ -101,33 +127,16 @@ namespace
       glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, format, GL_UNSIGNED_BYTE, src.Data());
     }
   }
+
+  static Graphic3d_Vec2i cursorToLocalViewport(Graphic3d_Vec2i cursor)
+  {
+    int x = cursor.x() - win_data::Content::pos.x();
+    x *= win_data::CONTENT_WIDTH / (float)win_data::Content::size.x();
+    int y = cursor.y() - win_data::Content::pos.y();
+    y *= win_data::CONTENT_HEIGHT / (float)win_data::Content::size.y();
+    return Graphic3d_Vec2i(x, y);
+  }
 } // namespace
-
-namespace win_data
-{
-  static constexpr int DISPLAY_WIDTH  = 800;
-  static constexpr int DISPLAY_HEIGHT = 600;
-  static constexpr int TEX_WIDTH      = 512;
-  static constexpr int TEX_HEIGHT     = 512;
-
-  struct DockWinId
-  {
-    static const std::string content;
-    static const std::string gui;
-  };
-
-  const std::string DockWinId::content = "Content";
-  const std::string DockWinId::gui     = "Gui";
-
-  struct ContentWin
-  {
-    static ImVec2 size;
-    static ImVec2 pos; // (left, top)
-  };
-
-  ImVec2 ContentWin::size = { 0, 0 };
-  ImVec2 ContentWin::pos  = { 0, 0 };
-} // namespace win_data
 
 // ================================================================
 // Function : GlfwOcctView
@@ -233,7 +242,7 @@ void GlfwOcctView::initViewer()
 
   // create offscreen window
   const TCollection_AsciiString aWinName("OCCT offscreen window");
-  Graphic3d_Vec2i aWinSize(win_data::TEX_WIDTH, win_data::TEX_HEIGHT);
+  Graphic3d_Vec2i aWinSize(win_data::CONTENT_WIDTH, win_data::CONTENT_HEIGHT);
 #if defined(_WIN32)
   const TCollection_AsciiString aClassName("OffscreenClass");
   // empty callback!
@@ -300,7 +309,7 @@ void GlfwOcctView::mainloop()
     {
       // render view offscreen
       FlushViewEvents(myContext, myView, true);
-      if (!myView->ToPixMap(myTexture.pixMap, win_data::TEX_WIDTH, win_data::TEX_HEIGHT))
+      if (!myView->ToPixMap(myTexture.pixMap, win_data::CONTENT_WIDTH, win_data::CONTENT_HEIGHT))
       {
         std::cerr << "View dump failed\n";
       }
@@ -359,7 +368,7 @@ void GlfwOcctView::onMouseButton(int theButton, int theAction, int theMods)
 {
   if (myView.IsNull()) { return; }
 
-  const Graphic3d_Vec2i aPos = myOcctWindow->CursorPosition();
+  const Graphic3d_Vec2i aPos = cursorToLocalViewport(myOcctWindow->CursorPosition());
   if (theAction == GLFW_PRESS)
   {
     PressMouseButton(aPos, mouseButtonFromGlfw(theButton), keyFlagsFromGlfw(theMods), false);
@@ -373,7 +382,7 @@ void GlfwOcctView::onMouseButton(int theButton, int theAction, int theMods)
 // ================================================================
 void GlfwOcctView::onMouseMove(int thePosX, int thePosY)
 {
-  const Graphic3d_Vec2i aNewPos(thePosX, thePosY);
+  const Graphic3d_Vec2i aNewPos = cursorToLocalViewport(Graphic3d_Vec2i(thePosX, thePosY));
   if (!myView.IsNull()) { UpdateMousePosition(aNewPos, PressedMouseButtons(), LastMouseFlags(), false); }
 }
 
@@ -465,8 +474,8 @@ void GlfwOcctView::render()
         // Main node should cover entire window
         ImGui::DockBuilderSetNodeSize(dock_space_id, ImGui::GetWindowSize());
         // Split root dock node
-        float gui_size = .2f;
         ImGuiID content_node, gui_node;
+        const float gui_size = .2f;
         ImGui::DockBuilderSplitNode(dock_space_id, ImGuiDir_Left, gui_size, &gui_node, &content_node);
 
         ImGui::DockBuilderDockWindow(win_data::DockWinId::content.c_str(), content_node);
@@ -488,10 +497,10 @@ void GlfwOcctView::render()
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
   ImGui::Begin(win_data::DockWinId::content.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar);
   {
-    ImVec2 win_pos             = ImGui::GetWindowPos();
-    win_data::ContentWin::pos  = { win_pos.x, win_pos.y };
-    ImVec2 win_size            = ImGui::GetWindowSize();
-    win_data::ContentWin::size = { win_size.x, win_size.y };
+    ImVec2 win_pos = ImGui::GetWindowPos();
+    win_data::Content::pos.SetValues(win_pos.x, win_pos.y);
+    ImVec2 win_size = ImGui::GetWindowSize();
+    win_data::Content::size.SetValues(win_size.x, win_size.y);
 
     ImGui::Image((ImTextureID)(intptr_t)myTexture.glID, win_size, ImVec2(0, 1), ImVec2(1, 0));
   }
