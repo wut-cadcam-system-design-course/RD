@@ -22,6 +22,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         TKV3d
         TKBool
         TKG3d
+        TKMesh
+        TKRWMesh
+        TKDEOBJ
         # TKernel
         # TKService
         # TKMath
