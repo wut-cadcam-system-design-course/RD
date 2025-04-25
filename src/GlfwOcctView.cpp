@@ -36,6 +36,7 @@
 #include <TColgp_Array1OfPnt.hxx>
 #include <Graphic3d_ArrayOfPoints.hxx>
 #include <Prs3d_PointAspect.hxx>
+#include "ImGuiFileDialog.h"
 
 namespace win_data
 {
@@ -521,7 +522,7 @@ void GlfwOcctView::render()
   {
     ImGui::Text("Hello!");
     
-    const char* buttonLabel = isLearning ? "End Select Rib" : "Select Rib";
+    const char* buttonLabel = isLearning ? "Save Rib to File" : "Select Rib";
     
     if (ImGui::Button(buttonLabel))
     {    
@@ -534,12 +535,38 @@ void GlfwOcctView::render()
         }
         else
         {
-            myContext->Deactivate(1);
-            myContext->Activate(0);
+          ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlg", "Select File", "*.*");
+
+
+          myContext->Deactivate(1);
+          myContext->Activate(0);
         }
+    }
+
+    if (isLearning && ImGui::Button("Cancel"))
+    {
+      isLearning = !isLearning;
+
+      myContext->Deactivate(1);
+      myContext->Activate(0);
     }
   }
   ImGui::End();
+
+  static char filePath[256] = "";
+  
+  if (ImGuiFileDialog::Instance()->Display("ChooseFileDlg"))
+  {
+      if (ImGuiFileDialog::Instance()->IsOk())
+      {
+          auto selection = ImGuiFileDialog::Instance()->GetSelection();
+          if (!selection.empty())
+          {
+            strncpy(filePath, selection.begin()->second.c_str(), sizeof(filePath)-1);
+          }
+      }
+      ImGuiFileDialog::Instance()->Close();
+  }
 
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -556,5 +583,6 @@ void GlfwOcctView::render()
     }
 
     uniqueVerts.Clear();
+    myContext->ClearSelected(false); 
   }
 }
