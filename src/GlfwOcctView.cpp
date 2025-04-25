@@ -504,7 +504,7 @@ void GlfwOcctView::render()
           static uint32_t untitledCounter = 1;
           static char defaultNameBuf[64];
 
-          snprintf(defaultNameBuf, sizeof(defaultNameBuf), "untitled%u.rib", untitledCounter);
+          snprintf(defaultNameBuf, sizeof(defaultNameBuf), "untitled%u.csv", untitledCounter);
 
           IGFD::FileDialogConfig cfg;
           cfg.path  = ".";
@@ -512,7 +512,7 @@ void GlfwOcctView::render()
           cfg.fileName = defaultNameBuf;
 
           ImGuiFileDialog::Instance()->OpenDialog(
-              "SaveRIB", "Save .rib File As", ".rib", cfg
+              "SaveRIB", "Save .csv File As", ".csv", cfg
           );
 
           untitledCounter++;
@@ -532,6 +532,11 @@ void GlfwOcctView::render()
       uniqueVerts.Clear();
       myContext->ClearSelected(false);
     }
+
+    if (ImGui::Button("Train from file"))
+    {
+      ImGuiFileDialog::Instance()->OpenDialog("Train", "Train from file", ".csv");
+    }
   }
   ImGui::End();
   
@@ -546,68 +551,62 @@ void GlfwOcctView::render()
     ImGuiFileDialog::Instance()->Close();
   }
 
-  ImGui::Render();
-  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
   if (!filePathName.empty())
   {
+    // 1. Zbierz wszystkie widoczne wierzchołki
     TopTools_IndexedMapOfShape vMap;
-
     AIS_ListOfInteractive displayed;
     myContext->DisplayedObjects(displayed);
-
     for (AIS_ListIteratorOfListOfInteractive it(displayed); it.More(); it.Next())
     {
         Handle(AIS_Shape) ais = Handle(AIS_Shape)::DownCast(it.Value());
-        if (ais.IsNull()) continue;
-
-        TopExp::MapShapes(ais->Shape(), TopAbs_VERTEX, vMap);
+        if (!ais.IsNull())
+            TopExp::MapShapes(ais->Shape(), TopAbs_VERTEX, vMap);
     }
 
-    std::vector<gp_Pnt> pts;
-    pts.reserve(vMap.Extent());
-    for (int i = 1; i <= vMap.Extent(); ++i)
-    {
-      pts.emplace_back(BRep_Tool::Pnt(TopoDS::Vertex(vMap(i))));
-    }
+    // 2. Zamień uniqueVerts na szybką mapę „oznaczony / nieoznaczony”
+    TopTools_IndexedMapOfShape ribMap;
+    for (int i = 1; i <= uniqueVerts.Extent(); ++i)
+        ribMap.Add(uniqueVerts(i));
 
-    std::ofstream rib(filePathName);
-    if (!rib.is_open())
+    // 3. Zapisz CSV
+    std::ofstream csv(filePathName);
+    if (!csv.is_open())
     {
-        std::cerr << "Cannot open RIB file for writing: " << filePathName << std::endl;
+        std::cerr << "Cannot open CSV file for writing: " << filePathName << std::endl;
         return;
     }
 
-    for (const auto& p : pts)
+    csv << "x,y,z,label\n";                       // nagłówek (opcjonalnie)
+
+    for (int i = 1; i <= vMap.Extent(); ++i)
     {
-        rib << p.X() << " "
-            << p.Y() << " "
-            << p.Z() << "\n";
+        const TopoDS_Shape& vShape = vMap(i);
+        gp_Pnt P = BRep_Tool::Pnt(TopoDS::Vertex(vShape));
+        int label = ribMap.Contains(vShape) ? 1 : 0;
+        csv << P.X() << "," << P.Y() << "," << P.Z() << "," << label << "\n";
     }
 
-    rib << "\n";
-
-    for (int i = 1; i <= uniqueVerts.Extent(); ++i)
-    {
-      const TopoDS_Shape& shape = uniqueVerts(i);
-  
-      TopoDS_Vertex vertex = TopoDS::Vertex(shape);
-  
-      gp_Pnt P = BRep_Tool::Pnt(vertex);
-  
-      rib << P.X() << " "
-          << P.Y() << " "
-          << P.Z() << "\n";
-    }
-
+    // 4. Porządki
     uniqueVerts.Clear();
     myContext->ClearSelected(false);
-
-    rib << "\n";
   }
 
   if (mIsLearning != isLearning)
   {
     mIsLearning = isLearning;
   }
+
+  if (ImGuiFileDialog::Instance()->Display("Train"))
+  {
+    if (ImGuiFileDialog::Instance()->IsOk())
+    {
+      filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+    }
+  
+    ImGuiFileDialog::Instance()->Close();
+  }
+
+  ImGui::Render();
+  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
