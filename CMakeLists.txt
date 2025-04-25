@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.27)
 project(RD)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS     OFF)
 
 add_subdirectory(external)
 
@@ -10,6 +12,9 @@ find_package(OpenCASCADE REQUIRED)
 file(GLOB_RECURSE SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
+
+list(APPEND CMAKE_PREFIX_PATH external/libtorch)
+find_package(Torch REQUIRED)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
         # OpenCASCADE specific
@@ -29,4 +34,5 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         # Other
         glfw
         imgui
-        ImGuiFileDialog)
+        ImGuiFileDialog
+        ${TORCH_LIBRARIES})
