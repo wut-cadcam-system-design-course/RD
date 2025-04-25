@@ -106,7 +106,7 @@ class GlfwOcctView : protected AIS_ViewController
   } myTexture;
 
   bool mIsLearning = false;
-  TopTools_IndexedMapOfShape uniqueVerts;
+  std::vector<TopTools_IndexedMapOfShape> uniqueVerts;
 };
 
 #endif // _GlfwOcctView_Header

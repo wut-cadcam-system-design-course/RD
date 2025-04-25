@@ -40,6 +40,7 @@
 #include <TopExp.hxx>
 #include <AIS_ListOfInteractive.hxx>
 #include <AIS_ListIteratorOfListOfInteractive.hxx>
+#include "ml.h"
 
 namespace win_data
 {
@@ -128,40 +129,20 @@ namespace
   }
 } // namespace
 
-// ================================================================
-// Function : GlfwOcctView
-// Purpose  :
-// ================================================================
 GlfwOcctView::GlfwOcctView() {}
 
-// ================================================================
-// Function : ~GlfwOcctView
-// Purpose  :
-// ================================================================
 GlfwOcctView::~GlfwOcctView() {}
 
-// ================================================================
-// Function : toView
-// Purpose  :
-// ================================================================
 GlfwOcctView* GlfwOcctView::toView(GLFWwindow* theWin)
 {
   return static_cast<GlfwOcctView*>(glfwGetWindowUserPointer(theWin));
 }
 
-// ================================================================
-// Function : errorCallback
-// Purpose  :
-// ================================================================
 void GlfwOcctView::errorCallback(int theError, const char* theDescription)
 {
   Message::DefaultMessenger()->Send(TCollection_AsciiString("Error") + theError + ": " + theDescription, Message_Fail);
 }
 
-// ================================================================
-// Function : run
-// Purpose  :
-// ================================================================
 void GlfwOcctView::run()
 {
   glfwSetErrorCallback(GlfwOcctView::errorCallback);
@@ -349,7 +330,7 @@ void GlfwOcctView::onMouseButton(int theButton, int theAction, int theMods)
         const TopoDS_Shape& S = myContext->SelectedShape();
         if (S.ShapeType() == TopAbs_VERTEX)
         {
-          uniqueVerts.Add(S);
+          uniqueVerts.back().Add(S);
         }
     }
   }
@@ -487,32 +468,37 @@ void GlfwOcctView::render()
   ImGui::Begin(win_data::DockWinId::gui.c_str());
   {
     ImGui::Text("Hello!");
-    
-    const char* buttonLabel = isLearning ? "Save Rib to File" : "Select Rib";
-    
+
+    if (isLearning && ImGui::Button("Select new haunch"))
+    {
+      uniqueVerts.emplace_back();
+    }
+
+    const char* buttonLabel = isLearning ? "Save haunches to .obj" : "Select haunches";
+
     if (ImGui::Button(buttonLabel))
-    {    
+    {
         isLearning = !isLearning;
 
         if (isLearning)
         {
             myContext->Deactivate(0);
             myContext->Activate(1);
+            uniqueVerts.emplace_back();
         }
         else
         {
           static uint32_t untitledCounter = 1;
           static char defaultNameBuf[64];
-
-          snprintf(defaultNameBuf, sizeof(defaultNameBuf), "untitled%u.csv", untitledCounter);
+          snprintf(defaultNameBuf, sizeof(defaultNameBuf), "untitled%u.obj", untitledCounter);
 
           IGFD::FileDialogConfig cfg;
-          cfg.path  = ".";
-          cfg.flags = ImGuiFileDialogFlags_ConfirmOverwrite;
-          cfg.fileName = defaultNameBuf;
+          cfg.path      = ".";
+          cfg.flags     = ImGuiFileDialogFlags_ConfirmOverwrite;
+          cfg.fileName  = defaultNameBuf;
 
           ImGuiFileDialog::Instance()->OpenDialog(
-              "SaveRIB", "Save .csv File As", ".csv", cfg
+              "SaveRIB", "Save .obj File As", ".obj", cfg
           );
 
           untitledCounter++;
@@ -529,17 +515,21 @@ void GlfwOcctView::render()
       myContext->Deactivate(1);
       myContext->Activate(0);
 
-      uniqueVerts.Clear();
+      for (auto& verts : uniqueVerts)
+      {
+        verts.Clear();
+      }
+      uniqueVerts.clear();
       myContext->ClearSelected(false);
     }
 
-    if (ImGui::Button("Train from file"))
+    if (!isLearning && ImGui::Button("Train from file"))
     {
-      ImGuiFileDialog::Instance()->OpenDialog("Train", "Train from file", ".csv");
+      ImGuiFileDialog::Instance()->OpenDialog("Train", "Train from file", ".obj");
     }
   }
   ImGui::End();
-  
+
   std::string filePathName;
   if (ImGuiFileDialog::Instance()->Display("SaveRIB"))
   {
@@ -547,48 +537,64 @@ void GlfwOcctView::render()
     {
       filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
     }
-  
     ImGuiFileDialog::Instance()->Close();
   }
 
   if (!filePathName.empty())
   {
-    // 1. Zbierz wszystkie widoczne wierzchołki
-    TopTools_IndexedMapOfShape vMap;
     AIS_ListOfInteractive displayed;
     myContext->DisplayedObjects(displayed);
+
+    std::ofstream obj(filePathName);
+    if (!obj.is_open())
+    {
+      std::cerr << "Cannot open OBJ file for writing: " << filePathName << std::endl;
+      return;
+    }
+
+    obj << "o obj 0\n";
     for (AIS_ListIteratorOfListOfInteractive it(displayed); it.More(); it.Next())
     {
-        Handle(AIS_Shape) ais = Handle(AIS_Shape)::DownCast(it.Value());
-        if (!ais.IsNull())
-            TopExp::MapShapes(ais->Shape(), TopAbs_VERTEX, vMap);
+      auto ais = Handle(AIS_Shape)::DownCast(it.Value());
+      if (ais.IsNull())
+      {
+        continue;
+      }
+
+      TopTools_IndexedMapOfShape vMap;
+      TopExp::MapShapes(ais->Shape(), TopAbs_VERTEX, vMap);
+
+      for (int i = 1; i <= vMap.Extent(); ++i)
+      {
+          const TopoDS_Shape& vShape = vMap(i);
+          gp_Pnt P = BRep_Tool::Pnt(TopoDS::Vertex(vShape));
+          obj << P.X() << "," << P.Y() << "," << P.Z() << "\n";
+      }
     }
+    obj << "\n";
 
-    // 2. Zamień uniqueVerts na szybką mapę „oznaczony / nieoznaczony”
-    TopTools_IndexedMapOfShape ribMap;
-    for (int i = 1; i <= uniqueVerts.Extent(); ++i)
-        ribMap.Add(uniqueVerts(i));
-
-    // 3. Zapisz CSV
-    std::ofstream csv(filePathName);
-    if (!csv.is_open())
+    int objIndex = 0;
+    for (auto& vertMap : uniqueVerts)
     {
-        std::cerr << "Cannot open CSV file for writing: " << filePathName << std::endl;
-        return;
+      ++objIndex;
+      obj << "o obj "<< objIndex << "\n";
+
+      for (Standard_Integer idx = 1; idx <= vertMap.Extent(); ++idx)
+      {
+        const TopoDS_Shape& s = vertMap.FindKey(idx);
+        TopoDS_Vertex v = TopoDS::Vertex(s);
+
+        gp_Pnt P = BRep_Tool::Pnt(v);
+
+        obj << "v "
+            << P.X() << " "
+            << P.Y() << " "
+            << P.Z() << "\n";
+      }
+
+      vertMap.Clear();
     }
-
-    csv << "x,y,z,label\n";                       // nagłówek (opcjonalnie)
-
-    for (int i = 1; i <= vMap.Extent(); ++i)
-    {
-        const TopoDS_Shape& vShape = vMap(i);
-        gp_Pnt P = BRep_Tool::Pnt(TopoDS::Vertex(vShape));
-        int label = ribMap.Contains(vShape) ? 1 : 0;
-        csv << P.X() << "," << P.Y() << "," << P.Z() << "," << label << "\n";
-    }
-
-    // 4. Porządki
-    uniqueVerts.Clear();
+    uniqueVerts.clear();
     myContext->ClearSelected(false);
   }
 
@@ -600,10 +606,7 @@ void GlfwOcctView::render()
   if (ImGuiFileDialog::Instance()->Display("Train"))
   {
     if (ImGuiFileDialog::Instance()->IsOk())
-    {
       filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
-    }
-  
     ImGuiFileDialog::Instance()->Close();
   }
 
