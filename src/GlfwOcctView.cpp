@@ -1,24 +1,3 @@
-// Copyright (c) 2019 OPEN CASCADE SAS
-//
-// This file is part of the examples of the Open CASCADE Technology software library.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
-
 #include "GlfwOcctView.h"
 
 #include <AIS_Shape.hxx>
@@ -50,6 +29,13 @@
 #include <X11/Xlib.h>
 #include <Xw_Window.hxx>
 #endif
+
+#include <TopoDS.hxx> 
+#include <TopExp_Explorer.hxx>
+#include <BRep_Tool.hxx>
+#include <TColgp_Array1OfPnt.hxx>
+#include <Graphic3d_ArrayOfPoints.hxx>
+#include <Prs3d_PointAspect.hxx>
 
 namespace win_data
 {
@@ -290,6 +276,9 @@ void GlfwOcctView::initDemoScene()
     }
   }
   Message::DefaultMessenger()->Send(TCollection_AsciiString("OpenGL info:\n") + aGlInfo, Message_Info);
+
+  // myContext->SetPixelTolerance(6);
+  // myContext->HighlightStyle()->SetColor(Quantity_NOC_CYAN4);
 }
 
 // ================================================================
@@ -369,11 +358,30 @@ void GlfwOcctView::onMouseButton(int theButton, int theAction, int theMods)
   if (myView.IsNull()) { return; }
 
   const Graphic3d_Vec2i aPos = cursorToLocalViewport(myOcctWindow->CursorPosition());
+
+  Aspect_VKeyFlags flags = keyFlagsFromGlfw(theMods);
+  if (mIsLearning && theButton == GLFW_MOUSE_BUTTON_LEFT)
+  {
+    flags = Aspect_VKeyFlags(flags | Aspect_VKeyFlags_SHIFT);
+  }
+
   if (theAction == GLFW_PRESS)
   {
-    PressMouseButton(aPos, mouseButtonFromGlfw(theButton), keyFlagsFromGlfw(theMods), false);
+    PressMouseButton(aPos, mouseButtonFromGlfw(theButton), flags, false);
   }
-  else { ReleaseMouseButton(aPos, mouseButtonFromGlfw(theButton), keyFlagsFromGlfw(theMods), false); }
+  else { ReleaseMouseButton(aPos, mouseButtonFromGlfw(theButton), flags, false); }
+
+  if (mIsLearning)
+  {
+    for (myContext->InitSelected(); myContext->MoreSelected(); myContext->NextSelected())
+    {
+        const TopoDS_Shape& S = myContext->SelectedShape();
+        if (S.ShapeType() == TopAbs_VERTEX)
+        {
+          uniqueVerts.Add(S);
+        }
+    }
+  }
 }
 
 // ================================================================
@@ -506,15 +514,47 @@ void GlfwOcctView::render()
   }
   ImGui::End();
   ImGui::PopStyleVar();
-  //
-  // render UI
+
+
+  bool isLearning = mIsLearning;
   ImGui::Begin(win_data::DockWinId::gui.c_str());
   {
     ImGui::Text("Hello!");
+    
+    const char* buttonLabel = isLearning ? "End Select Rib" : "Select Rib";
+    
+    if (ImGui::Button(buttonLabel))
+    {    
+        isLearning = !isLearning;
+
+        if (isLearning)
+        {
+            myContext->Deactivate(0);
+            myContext->Activate(1);
+        }
+        else
+        {
+            myContext->Deactivate(1);
+            myContext->Activate(0);
+        }
+    }
   }
   ImGui::End();
-  //
-  // send to imgui renderer
+
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+  if (mIsLearning != isLearning)
+  {
+    mIsLearning = isLearning;
+
+    for (int i = 1; i <= uniqueVerts.Extent(); ++i)
+    {
+        const gp_Pnt P = BRep_Tool::Pnt(TopoDS::Vertex(uniqueVerts(i)));
+        std::cout << "Point " << (i-1) << ": ("
+                  << P.X() << ", " << P.Y() << ", " << P.Z() << ")\n";
+    }
+
+    uniqueVerts.Clear();
+  }
 }
