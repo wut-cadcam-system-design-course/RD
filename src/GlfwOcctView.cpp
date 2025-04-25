@@ -37,6 +37,9 @@
 #include <Graphic3d_ArrayOfPoints.hxx>
 #include <Prs3d_PointAspect.hxx>
 #include "ImGuiFileDialog.h"
+#include <TopExp.hxx>
+#include <AIS_ListOfInteractive.hxx>
+#include <AIS_ListIteratorOfListOfInteractive.hxx>
 
 namespace win_data
 {
@@ -176,10 +179,6 @@ void GlfwOcctView::run()
   cleanup();
 }
 
-// ================================================================
-// Function : initWindow
-// Purpose  :
-// ================================================================
 void GlfwOcctView::initWindow(int theWidth, int theHeight, const char* theTitle)
 {
   const bool toAskCoreProfile = true;
@@ -203,10 +202,6 @@ void GlfwOcctView::initWindow(int theWidth, int theHeight, const char* theTitle)
   glfwSetCursorPosCallback(myOcctWindow->getGlfwWindow(), GlfwOcctView::onMouseMoveCallback);
 }
 
-// ================================================================
-// Function : initViewer
-// Purpose  :
-// ================================================================
 void GlfwOcctView::initViewer()
 {
   if (myOcctWindow.IsNull() || myOcctWindow->getGlfwWindow() == nullptr) { return; }
@@ -248,10 +243,6 @@ void GlfwOcctView::initViewer()
   myView->SetWindow(aWindow);
 }
 
-// ================================================================
-// Function : initDemoScene
-// Purpose  :
-// ================================================================
 void GlfwOcctView::initDemoScene()
 {
   if (myContext.IsNull()) { return; }
@@ -282,11 +273,6 @@ void GlfwOcctView::initDemoScene()
   // myContext->HighlightStyle()->SetColor(Quantity_NOC_CYAN4);
 }
 
-// ================================================================
-// Function : mainloop
-// Purpose  :
-// ================================================================
-
 void GlfwOcctView::mainloop()
 {
   while (!glfwWindowShouldClose(myOcctWindow->getGlfwWindow()))
@@ -314,10 +300,6 @@ void GlfwOcctView::mainloop()
   }
 }
 
-// ================================================================
-// Function : cleanup
-// Purpose  :
-// ================================================================
 void GlfwOcctView::cleanup()
 {
   glDeleteTextures(1, &myTexture.glID);
@@ -326,10 +308,6 @@ void GlfwOcctView::cleanup()
   glfwTerminate();
 }
 
-// ================================================================
-// Function : onResize
-// Purpose  :
-// ================================================================
 void GlfwOcctView::onResize(int theWidth, int theHeight)
 {
   if (theWidth != 0 && theHeight != 0 && !myView.IsNull())
@@ -341,19 +319,11 @@ void GlfwOcctView::onResize(int theWidth, int theHeight)
   }
 }
 
-// ================================================================
-// Function : onMouseScroll
-// Purpose  :
-// ================================================================
 void GlfwOcctView::onMouseScroll(double theOffsetX, double theOffsetY)
 {
   if (!myView.IsNull()) { UpdateZoom(Aspect_ScrollDelta(myOcctWindow->CursorPosition(), int(theOffsetY * 8.0))); }
 }
 
-// ================================================================
-// Function : onMouseButton
-// Purpose  :
-// ================================================================
 void GlfwOcctView::onMouseButton(int theButton, int theAction, int theMods)
 {
   if (myView.IsNull()) { return; }
@@ -385,10 +355,6 @@ void GlfwOcctView::onMouseButton(int theButton, int theAction, int theMods)
   }
 }
 
-// ================================================================
-// Function : onMouseMove
-// Purpose  :
-// ================================================================
 void GlfwOcctView::onMouseMove(int thePosX, int thePosY)
 {
   const Graphic3d_Vec2i aNewPos = cursorToLocalViewport(Graphic3d_Vec2i(thePosX, thePosY));
@@ -535,8 +501,21 @@ void GlfwOcctView::render()
         }
         else
         {
-          ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlg", "Select File", "*.*");
+          static uint32_t untitledCounter = 1;
+          static char defaultNameBuf[64];
 
+          snprintf(defaultNameBuf, sizeof(defaultNameBuf), "untitled%u.rib", untitledCounter);
+
+          IGFD::FileDialogConfig cfg;
+          cfg.path  = ".";
+          cfg.flags = ImGuiFileDialogFlags_ConfirmOverwrite;
+          cfg.fileName = defaultNameBuf;
+
+          ImGuiFileDialog::Instance()->OpenDialog(
+              "SaveRIB", "Save .rib File As", ".rib", cfg
+          );
+
+          untitledCounter++;
 
           myContext->Deactivate(1);
           myContext->Activate(0);
@@ -549,40 +528,86 @@ void GlfwOcctView::render()
 
       myContext->Deactivate(1);
       myContext->Activate(0);
+
+      uniqueVerts.Clear();
+      myContext->ClearSelected(false);
     }
   }
   ImGui::End();
-
-  static char filePath[256] = "";
   
-  if (ImGuiFileDialog::Instance()->Display("ChooseFileDlg"))
+  std::string filePathName;
+  if (ImGuiFileDialog::Instance()->Display("SaveRIB"))
   {
-      if (ImGuiFileDialog::Instance()->IsOk())
-      {
-          auto selection = ImGuiFileDialog::Instance()->GetSelection();
-          if (!selection.empty())
-          {
-            strncpy(filePath, selection.begin()->second.c_str(), sizeof(filePath)-1);
-          }
-      }
-      ImGuiFileDialog::Instance()->Close();
+    if (ImGuiFileDialog::Instance()->IsOk())
+    {
+      filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+    }
+  
+    ImGuiFileDialog::Instance()->Close();
   }
 
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-  if (mIsLearning != isLearning)
+  if (!filePathName.empty())
   {
-    mIsLearning = isLearning;
+    TopTools_IndexedMapOfShape vMap;
+
+    AIS_ListOfInteractive displayed;
+    myContext->DisplayedObjects(displayed);
+
+    for (AIS_ListIteratorOfListOfInteractive it(displayed); it.More(); it.Next())
+    {
+        Handle(AIS_Shape) ais = Handle(AIS_Shape)::DownCast(it.Value());
+        if (ais.IsNull()) continue;
+
+        TopExp::MapShapes(ais->Shape(), TopAbs_VERTEX, vMap);
+    }
+
+    std::vector<gp_Pnt> pts;
+    pts.reserve(vMap.Extent());
+    for (int i = 1; i <= vMap.Extent(); ++i)
+    {
+      pts.emplace_back(BRep_Tool::Pnt(TopoDS::Vertex(vMap(i))));
+    }
+
+    std::ofstream rib(filePathName);
+    if (!rib.is_open())
+    {
+        std::cerr << "Cannot open RIB file for writing: " << filePathName << std::endl;
+        return;
+    }
+
+    for (const auto& p : pts)
+    {
+        rib << p.X() << " "
+            << p.Y() << " "
+            << p.Z() << "\n";
+    }
+
+    rib << "\n";
 
     for (int i = 1; i <= uniqueVerts.Extent(); ++i)
     {
-        const gp_Pnt P = BRep_Tool::Pnt(TopoDS::Vertex(uniqueVerts(i)));
-        std::cout << "Point " << (i-1) << ": ("
-                  << P.X() << ", " << P.Y() << ", " << P.Z() << ")\n";
+      const TopoDS_Shape& shape = uniqueVerts(i);
+  
+      TopoDS_Vertex vertex = TopoDS::Vertex(shape);
+  
+      gp_Pnt P = BRep_Tool::Pnt(vertex);
+  
+      rib << P.X() << " "
+          << P.Y() << " "
+          << P.Z() << "\n";
     }
 
     uniqueVerts.Clear();
-    myContext->ClearSelected(false); 
+    myContext->ClearSelected(false);
+
+    rib << "\n";
+  }
+
+  if (mIsLearning != isLearning)
+  {
+    mIsLearning = isLearning;
   }
 }
