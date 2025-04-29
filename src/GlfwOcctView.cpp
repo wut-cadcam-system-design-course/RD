@@ -31,6 +31,17 @@
 #include <OpenGl_GraphicDriver.hxx>
 #include <TopAbs_ShapeEnum.hxx>
 
+#include <AIS_InteractiveContext.hxx>
+#include <TopExp_Explorer.hxx>
+#include <TopoDS.hxx>
+#include <TopoDS_Shape.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Vertex.hxx>
+#include <BRep_Tool.hxx>
+#include <gp_Pnt.hxx>
+#include <Standard_Type.hxx>
+#include <TopExp.hxx>
+
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <imgui.h>
@@ -278,18 +289,6 @@ void GlfwOcctView::initDemoScene()
   anAxis.SetLocation(gp_Pnt(25.0, 125.0, 0.0));
   Handle(AIS_Shape) aCone = new AIS_Shape(BRepPrimAPI_MakeCone(anAxis, 25, 0, 50).Shape());
   myContext->Display(aCone, AIS_Shaded, 0, false);
-
-  TCollection_AsciiString aGlInfo;
-  {
-    TColStd_IndexedDataMapOfStringString aRendInfo;
-    myView->DiagnosticInformation(aRendInfo, Graphic3d_DiagnosticInfo_Basic);
-    for (TColStd_IndexedDataMapOfStringString::Iterator aValueIter(aRendInfo); aValueIter.More(); aValueIter.Next())
-    {
-      if (!aGlInfo.IsEmpty()) { aGlInfo += "\n"; }
-      aGlInfo += TCollection_AsciiString("  ") + aValueIter.Key() + ": " + aValueIter.Value();
-    }
-  }
-  Message::DefaultMessenger()->Send(TCollection_AsciiString("OpenGL info:\n") + aGlInfo, Message_Info);
 }
 
 // ================================================================
@@ -510,7 +509,26 @@ void GlfwOcctView::render()
   // render UI
   ImGui::Begin(win_data::DockWinId::gui.c_str());
   {
-    ImGui::Text("Hello!");
+    if(ImGui::Button("Iterate faces")){
+      AIS_ListOfInteractive aList;
+      myContext->DisplayedObjects(aList);
+      for (AIS_ListIteratorOfListOfInteractive it(aList); it.More(); it.Next())
+      {
+        Handle(AIS_InteractiveObject) io = it.Value();
+        Handle(AIS_Shape) aisShape = Handle(AIS_Shape)::DownCast(io);
+        if (aisShape.IsNull())
+            continue;
+    
+        const TopoDS_Shape& shape = aisShape->Shape();
+        std::cout << "Processing Shape...\n";
+    
+        // Explore faces
+        for (TopExp_Explorer faceExp(shape, TopAbs_FACE); faceExp.More(); faceExp.Next())
+        {
+            std::cout << "  Found a face\n";
+        }
+      }
+    }
   }
   ImGui::End();
   //
