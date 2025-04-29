@@ -36,6 +36,16 @@
 #include <OpenGl_GraphicDriver.hxx>
 #include <TopAbs_ShapeEnum.hxx>
 #include <TopoDS_Shape.hxx>
+#include <AIS_InteractiveContext.hxx>
+#include <BRep_Tool.hxx>
+#include <Standard_Type.hxx>
+#include <TopExp.hxx>
+#include <TopExp_Explorer.hxx>
+#include <TopoDS.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Shape.hxx>
+#include <TopoDS_Vertex.hxx>
+#include <gp_Pnt.hxx>
 
 // imgui
 #include <backends/imgui_impl_glfw.h>
@@ -530,6 +540,26 @@ void GlfwOcctView::render()
       }
       else if (result == NFD_CANCEL) {}
       else { printf("Error: %s\n", NFD_GetError()); }
+    }
+    if(ImGui::Button("Iterate faces")){
+      AIS_ListOfInteractive aList;
+      myContext->DisplayedObjects(aList);
+      for (AIS_ListIteratorOfListOfInteractive it(aList); it.More(); it.Next())
+      {
+        Handle(AIS_InteractiveObject) io = it.Value();
+        Handle(AIS_Shape) aisShape = Handle(AIS_Shape)::DownCast(io);
+        if (aisShape.IsNull())
+            continue;
+
+        const TopoDS_Shape& shape = aisShape->Shape();
+        std::cout << "Processing Shape...\n";
+
+        // Explore faces
+        for (TopExp_Explorer faceExp(shape, TopAbs_FACE); faceExp.More(); faceExp.Next())
+        {
+            std::cout << "  Found a face\n";
+        }
+      }
     }
   }
   ImGui::End();
