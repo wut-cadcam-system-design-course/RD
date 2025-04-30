@@ -17,3 +17,6 @@ cmake -S ./occt/ \
   -B $OCCT_BUILD_DIR
 cmake --build $OCCT_BUILD_DIR --parallel $OCCT_BUILD_THREADS
 cmake --install $OCCT_BUILD_DIR
+
+wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.7.0%2Bcpu.zip
+unzip libtorch-cxx11-abi-shared-with-deps-2.7.0+cpu.zip

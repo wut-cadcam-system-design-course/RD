@@ -5,3 +5,8 @@ cmake-build-debug
 # occt binaries
 /external/occt-build
 /external/occt-install
+
+build
+
+/external/libtorch-cxx11-abi-shared-with-deps-2.7.0+cpu.zip
+/external/libtorch
