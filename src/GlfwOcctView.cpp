@@ -23,8 +23,8 @@
 #include <filesystem>
 #include <iostream>
 
-#include "GlfwOcctView.h"
 // occt
+#include "GlfwOcctView.h"
 #include <AIS_Shape.hxx>
 #include <Aspect_DisplayConnection.hxx>
 #include <Aspect_Handle.hxx>
