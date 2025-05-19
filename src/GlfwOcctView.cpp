@@ -23,6 +23,7 @@
 #include <filesystem>
 #include <iostream>
 
+#include "GlfwOcctView.h"
 // occt
 #include <AIS_Shape.hxx>
 #include <Aspect_DisplayConnection.hxx>
@@ -61,6 +62,7 @@
 
 // other
 #include "GlfwOcctView.h"
+#include "haunch.h"
 
 #ifdef _WIN32
 #include <WNT_WClass.hxx>
@@ -541,7 +543,8 @@ void GlfwOcctView::render()
       else if (result == NFD_CANCEL) {}
       else { printf("Error: %s\n", NFD_GetError()); }
     }
-    if(ImGui::Button("Iterate faces")){
+    if(ImGui::Button("Iterate faces"))
+    {
       AIS_ListOfInteractive aList;
       myContext->DisplayedObjects(aList);
       for (AIS_ListIteratorOfListOfInteractive it(aList); it.More(); it.Next())
@@ -549,7 +552,7 @@ void GlfwOcctView::render()
         Handle(AIS_InteractiveObject) io = it.Value();
         Handle(AIS_Shape) aisShape = Handle(AIS_Shape)::DownCast(io);
         if (aisShape.IsNull())
-            continue;
+          continue;
 
         const TopoDS_Shape& shape = aisShape->Shape();
         std::cout << "Processing Shape...\n";
@@ -557,9 +560,13 @@ void GlfwOcctView::render()
         // Explore faces
         for (TopExp_Explorer faceExp(shape, TopAbs_FACE); faceExp.More(); faceExp.Next())
         {
-            std::cout << "  Found a face\n";
+          std::cout << "  Found a face\n";
         }
       }
+    }
+    if (ImGui::Button("Iterate faces"))
+    {
+      ProcessDisplayedShapes(myContext);
     }
   }
   ImGui::End();
