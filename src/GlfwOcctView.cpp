@@ -564,9 +564,11 @@ void GlfwOcctView::render()
         }
       }
     }
+    static float dist = 0.01f;
+    ImGui::DragFloat("haunch max distance", &dist, 0.005f, 0.0001f, 5.f, "%.4f");
     if (ImGui::Button("Iterate faces"))
     {
-      ProcessDisplayedShapes(myContext);
+      ProcessDisplayedShapes(myContext, dist);
     }
   }
   ImGui::End();
