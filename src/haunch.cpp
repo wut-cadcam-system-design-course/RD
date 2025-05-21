@@ -10,7 +10,7 @@ bool GetFacePlaneNormal(const TopoDS_Face& face, gp_Dir& outNormal)
     if (!plane.IsNull())
     {
       outNormal = plane->Pln().Axis().Direction();
-      std::cout << outNormal.X() << " " << outNormal.Y() << " " << outNormal.Z() << "\n";
+      std::cout << "Normal: " << outNormal.X() << " " << outNormal.Y() << " " << outNormal.Z() << "\n";
       return true;
     }
   }
@@ -61,7 +61,7 @@ std::vector<std::pair<TopoDS_Face, gp_Dir>> CollectPlaneFaces(const TopoDS_Shape
     return planeFaces;
 }
 
-void ProcessShapeFacesForParallelPlanes(const TopoDS_Shape& shape)
+void ProcessShapeFacesForParallelPlanes(const TopoDS_Shape& shape, float max_distance)
 {
     std::cout << "Processing Shape...\n";
 
@@ -80,7 +80,7 @@ void ProcessShapeFacesForParallelPlanes(const TopoDS_Shape& shape)
                 gp_Pnt p2 = BRep_Tool::Surface(face2)->Value(0.0, 0.0);
                 Standard_Real distance = p1.Distance(p2);
 
-                if (distance < 1e-3)
+                if (distance < max_distance)
                 {
                     if (HaveSameVertices(face1, face2))
                     {
@@ -92,7 +92,7 @@ void ProcessShapeFacesForParallelPlanes(const TopoDS_Shape& shape)
     }
 }
 
-void ProcessDisplayedShapes(const Handle(AIS_InteractiveContext)& context)
+void ProcessDisplayedShapes(const Handle(AIS_InteractiveContext)& context, float max_distance)
 {
     AIS_ListOfInteractive aList;
     context->DisplayedObjects(aList);
@@ -105,6 +105,6 @@ void ProcessDisplayedShapes(const Handle(AIS_InteractiveContext)& context)
             continue;
 
         const TopoDS_Shape& shape = aisShape->Shape();
-        ProcessShapeFacesForParallelPlanes(shape);
+        ProcessShapeFacesForParallelPlanes(shape, max_distance);
     }
 }
