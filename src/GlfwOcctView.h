@@ -63,6 +63,8 @@ class GlfwOcctView : protected AIS_ViewController
 
   void render();
 
+  void loadModel(const char* filepath);
+
   //! @name GLWF callbacks
  private:
   //! Window resize event.

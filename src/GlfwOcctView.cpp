@@ -19,26 +19,38 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
-#include "GlfwOcctView.h"
+// std
+#include <filesystem>
+#include <iostream>
 
+// occt
 #include <AIS_Shape.hxx>
 #include <Aspect_DisplayConnection.hxx>
 #include <Aspect_Handle.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCone.hxx>
+#include <BRepTools.hxx>
+#include <BRep_Builder.hxx>
 #include <Message.hxx>
 #include <Message_Messenger.hxx>
 #include <OpenGl_GraphicDriver.hxx>
 #include <TopAbs_ShapeEnum.hxx>
+#include <TopoDS_Shape.hxx>
 
+// imgui
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
-#include <iostream>
-
+// glfw
 #include <GLFW/glfw3.h>
+
+// nfd
+#include <nfd.h>
+
+// other
+#include "GlfwOcctView.h"
 
 #ifdef _WIN32
 #include <WNT_WClass.hxx>
@@ -175,6 +187,7 @@ void GlfwOcctView::errorCallback(int theError, const char* theDescription)
 void GlfwOcctView::run()
 {
   glfwSetErrorCallback(GlfwOcctView::errorCallback);
+  NFD_Init();
   glfwInit();
   initWindow(win_data::DISPLAY_WIDTH, win_data::DISPLAY_HEIGHT, "RD");
   initViewer();
@@ -186,6 +199,7 @@ void GlfwOcctView::run()
   initUI();
   mainloop();
   cleanupUI();
+  NFD_Quit();
   cleanup();
 }
 
@@ -270,14 +284,6 @@ void GlfwOcctView::initDemoScene()
   if (myContext.IsNull()) { return; }
 
   myView->TriedronDisplay(Aspect_TOTP_LEFT_LOWER, Quantity_NOC_GOLD, 0.08, V3d_WIREFRAME);
-
-  gp_Ax2 anAxis;
-  anAxis.SetLocation(gp_Pnt(0.0, 0.0, 0.0));
-  Handle(AIS_Shape) aBox = new AIS_Shape(BRepPrimAPI_MakeBox(anAxis, 50, 50, 50).Shape());
-  myContext->Display(aBox, AIS_Shaded, 0, false);
-  anAxis.SetLocation(gp_Pnt(25.0, 125.0, 0.0));
-  Handle(AIS_Shape) aCone = new AIS_Shape(BRepPrimAPI_MakeCone(anAxis, 25, 0, 50).Shape());
-  myContext->Display(aCone, AIS_Shaded, 0, false);
 
   TCollection_AsciiString aGlInfo;
   {
@@ -510,11 +516,37 @@ void GlfwOcctView::render()
   // render UI
   ImGui::Begin(win_data::DockWinId::gui.c_str());
   {
-    ImGui::Text("Hello!");
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    if (ImGui::Button("Load model", ImVec2(avail.x, 0)))
+    {
+      nfdu8char_t* filepath;
+      nfdu8filteritem_t filter           = { "Geometry", "brep" };
+      std::filesystem::path default_path = std::filesystem::current_path() / "../external/occt/data/occ";
+      nfdresult_t result                 = NFD_OpenDialogU8(&filepath, &filter, 1, default_path.c_str());
+      if (result == NFD_OKAY)
+      {
+        loadModel(filepath);
+        NFD_FreePathU8(filepath);
+      }
+      else if (result == NFD_CANCEL) {}
+      else { printf("Error: %s\n", NFD_GetError()); }
+    }
   }
   ImGui::End();
   //
   // send to imgui renderer
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+void GlfwOcctView::loadModel(const char* filepath)
+{
+  TopoDS_Shape shape;
+  BRep_Builder builder;
+  if (!BRepTools::Read(shape, filepath, builder)) { throw std::runtime_error("Failed to read BREP file"); }
+  Message::DefaultMessenger()->Send(TCollection_AsciiString("Loaded file: ") + filepath + "\n", Message_Info);
+
+  Handle(AIS_Shape) aisShape = new AIS_Shape(shape);
+  // myContext->Display(aisShape, Standard_True);
+  myContext->Display(aisShape, AIS_Shaded, 0, false);
 }

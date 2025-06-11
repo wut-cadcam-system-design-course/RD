@@ -20,12 +20,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         # TKernel
         # TKService
         # TKMath
-        # TKBRep
+        TKBRep
         # TKGeomBase
         # TKPrim
-        # TKTopAlgo
+        TKTopAlgo
         # TKShHealing
         #
         # Other
         glfw
-        imgui)
+        imgui
+        nfd)

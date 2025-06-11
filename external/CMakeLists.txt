@@ -15,3 +15,7 @@ add_library(imgui STATIC ${IMGUI_SOURCES})
 
 target_include_directories(imgui PUBLIC ${IMGUI_PATH})
 # -------------------------------------------------------------------------
+
+# ------------------------------ INCLUDE NATIVEFILEDIALOG ------------------------------
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/nativefiledialog)
+# --------------------------------------------------------------------------------------
