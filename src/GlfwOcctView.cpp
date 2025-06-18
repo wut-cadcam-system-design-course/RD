@@ -25,6 +25,7 @@
 
 // occt
 #include "GlfwOcctView.h"
+#include <AIS_InteractiveContext.hxx>
 #include <AIS_Shape.hxx>
 #include <Aspect_DisplayConnection.hxx>
 #include <Aspect_Handle.hxx>
@@ -32,14 +33,12 @@
 #include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepTools.hxx>
 #include <BRep_Builder.hxx>
+#include <BRep_Tool.hxx>
 #include <Message.hxx>
 #include <Message_Messenger.hxx>
 #include <OpenGl_GraphicDriver.hxx>
-#include <TopAbs_ShapeEnum.hxx>
-#include <TopoDS_Shape.hxx>
-#include <AIS_InteractiveContext.hxx>
-#include <BRep_Tool.hxx>
 #include <Standard_Type.hxx>
+#include <TopAbs_ShapeEnum.hxx>
 #include <TopExp.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
@@ -543,16 +542,16 @@ void GlfwOcctView::render()
       else if (result == NFD_CANCEL) {}
       else { printf("Error: %s\n", NFD_GetError()); }
     }
-    if(ImGui::Button("Iterate faces"))
+    ImGui::Spacing();
+    if (ImGui::Button("Iterate faces", ImVec2(avail.x, 0)))
     {
       AIS_ListOfInteractive aList;
       myContext->DisplayedObjects(aList);
       for (AIS_ListIteratorOfListOfInteractive it(aList); it.More(); it.Next())
       {
         Handle(AIS_InteractiveObject) io = it.Value();
-        Handle(AIS_Shape) aisShape = Handle(AIS_Shape)::DownCast(io);
-        if (aisShape.IsNull())
-          continue;
+        Handle(AIS_Shape) aisShape       = Handle(AIS_Shape)::DownCast(io);
+        if (aisShape.IsNull()) continue;
 
         const TopoDS_Shape& shape = aisShape->Shape();
         std::cout << "Processing Shape...\n";
@@ -566,10 +565,7 @@ void GlfwOcctView::render()
     }
     static float dist = 50.f;
     ImGui::DragFloat("haunch max distance", &dist, 0.5f, 1.0f, 60.f, "%.0f");
-    if (ImGui::Button("Iterate faces"))
-    {
-      ProcessDisplayedShapes(myContext, dist);
-    }
+    if (ImGui::Button("Iterate faces", ImVec2(avail.x, 0))) { ProcessDisplayedShapes(myContext, dist); }
   }
   ImGui::End();
   //
