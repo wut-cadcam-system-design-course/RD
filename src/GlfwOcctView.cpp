@@ -1,23 +1,3 @@
-// Copyright (c) 2019 OPEN CASCADE SAS
-//
-// This file is part of the examples of the Open CASCADE Technology software library.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
 // std
 #include <filesystem>
@@ -73,6 +53,152 @@
 #include <X11/Xlib.h>
 #include <Xw_Window.hxx>
 #endif
+
+// stairs to heaven
+#include <AIS_InteractiveContext.hxx>
+#include <AIS_InteractiveObject.hxx>
+#include <AIS_Shape.hxx>
+#include <Aspect_DisplayConnection.hxx>
+#include <BRepTools.hxx>
+#include <BRep_Builder.hxx>
+#include <BRep_Tool.hxx>
+#include <BRepBndLib.hxx>
+#include <Bnd_Box.hxx>
+#include <Graphic3d_ArrayOfQuadrangles.hxx>
+#include <OpenGl_GraphicDriver.hxx>
+#include <Prs3d_Root.hxx>
+#include <Prs3d_ShadingAspect.hxx>
+#include <Standard_Type.hxx>
+#include <TopAbs_ShapeEnum.hxx>
+#include <TopExp.hxx>
+#include <TopExp_Explorer.hxx>
+#include <TopoDS.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Vertex.hxx>
+#include <gp_Pnt.hxx>
+#include <gp_Vec.hxx>
+#include <AIS_InteractiveContext.hxx>
+#include <AIS_InteractiveObject.hxx>
+#include <Aspect_DisplayConnection.hxx>
+#include <BRepTools.hxx>
+#include <BRep_Builder.hxx>
+#include <BRep_Tool.hxx>
+#include <BRepBndLib.hxx>
+#include <Bnd_Box.hxx>
+#include <GeomAdaptor_Surface.hxx>
+#include <Graphic3d_ArrayOfQuadrangles.hxx>
+#include <OpenGl_GraphicDriver.hxx>
+#include <Prs3d_Presentation.hxx>
+#include <Prs3d_ShadingAspect.hxx>
+#include <Select3D_SensitiveBox.hxx>
+#include <SelectMgr_EntityOwner.hxx>
+#include <Standard_Type.hxx>
+#include <TopAbs_ShapeEnum.hxx>
+#include <TopExp.hxx>
+#include <TopExp_Explorer.hxx>
+#include <TopoDS.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Vertex.hxx>
+#include <gp_Pnt.hxx>
+#include <gp_Vec.hxx>
+
+class AIS_QuadShape : public AIS_InteractiveObject
+{
+  DEFINE_STANDARD_RTTIEXT(AIS_QuadShape, AIS_InteractiveObject)
+public:
+  explicit AIS_QuadShape(const TopoDS_Shape& theShape) : myShape(theShape) {}
+  const TopoDS_Shape& Shape() const { return myShape; } // accessor for client code
+
+protected:
+  //! Build shaded presentation containing quadrangles.
+  void Compute(const Handle(PrsMgr_PresentationManager)& /*thePM*/,
+               const Handle(Prs3d_Presentation)&          thePrs,
+               const Standard_Integer /*theMode*/) override
+  {
+    std::vector<gp_Pnt> verts;
+    std::vector<gp_Dir> norms;
+
+    for (TopExp_Explorer fExp(myShape, TopAbs_FACE); fExp.More(); fExp.Next())
+    {
+      const TopoDS_Face& F = TopoDS::Face(fExp.Current());
+
+      // — check if face is planar using GeomAdaptor_Surface
+      // — check if face is planar
+      Handle(Geom_Surface) surf = BRep_Tool::Surface(F);
+      if (surf.IsNull())
+        continue;
+      GeomAdaptor_Surface ga(surf);
+      if (ga.GetType() != GeomAbs_Plane)
+        continue;
+
+      // — gather exactly 4 unique vertices in order
+      TopoDS_Vertex vtx[4];
+      int           nV = 0;
+      for (TopExp_Explorer eExp(F, TopAbs_EDGE); eExp.More() && nV < 4; eExp.Next())
+      {
+        const TopoDS_Edge& E = TopoDS::Edge(eExp.Current());
+        TopoDS_Vertex v1, v2;
+        TopExp::Vertices(E, v1, v2);
+        if (nV == 0)
+          vtx[nV++] = v1;
+        if (nV < 4)
+          vtx[nV++] = v2;
+      }
+      if (nV != 4)
+        continue; // skip non‑quad faces
+
+      gp_Pnt P[4];
+      for (int i = 0; i < 4; ++i)
+        P[i] = BRep_Tool::Pnt(vtx[i]);
+
+      gp_Vec nVec(gp_Vec(P[0], P[1]) ^ gp_Vec(P[0], P[3]));
+      if (nVec.SquareMagnitude() < gp::Resolution())
+        continue;
+      gp_Dir nDir(nVec);
+
+      for (int i = 0; i < 4; ++i)
+      {
+        verts.emplace_back(P[i]);
+        norms.emplace_back(nDir);
+      }
+    }
+
+    const Standard_Integer nbVerts = static_cast<Standard_Integer>(verts.size());
+    if (nbVerts == 0)
+      return;
+
+    Handle(Graphic3d_ArrayOfQuadrangles) arr =
+        new Graphic3d_ArrayOfQuadrangles(nbVerts, Graphic3d_ArrayFlags_VertexNormal);
+    for (Standard_Integer i = 0; i < nbVerts; ++i)
+      arr->AddVertex(verts[i], norms[i]);
+
+    Handle(Graphic3d_Group) grp = thePrs->NewGroup();
+    // simple neutral aspect – could reuse global viewer settings
+    Handle(Prs3d_ShadingAspect) SA = new Prs3d_ShadingAspect();
+    grp->SetGroupPrimitivesAspect(SA->Aspect());
+    grp->AddPrimitiveArray(arr);
+  }
+
+  //! Minimal selection: single bounding box so object can be picked.
+  void ComputeSelection(const Handle(SelectMgr_Selection)& theSel,
+                        const Standard_Integer             /*theMode*/) override
+  {
+    Bnd_Box bb;
+    BRepBndLib::Add(myShape, bb);
+    if (bb.IsVoid())
+      return;
+
+    Handle(SelectMgr_EntityOwner) owner = new SelectMgr_EntityOwner(this);
+    Handle(Select3D_SensitiveBox) sBox  = new Select3D_SensitiveBox(owner, bb);
+    theSel->Add(sBox);
+  }
+
+private:
+  TopoDS_Shape myShape;
+};
+IMPLEMENT_STANDARD_RTTIEXT(AIS_QuadShape, AIS_InteractiveObject)
 
 namespace win_data
 {
@@ -550,7 +676,7 @@ void GlfwOcctView::render()
       for (AIS_ListIteratorOfListOfInteractive it(aList); it.More(); it.Next())
       {
         Handle(AIS_InteractiveObject) io = it.Value();
-        Handle(AIS_Shape) aisShape       = Handle(AIS_Shape)::DownCast(io);
+        Handle(AIS_QuadShape) aisShape = Handle(AIS_QuadShape)::DownCast(io);
         if (aisShape.IsNull()) continue;
 
         const TopoDS_Shape& shape = aisShape->Shape();
@@ -576,12 +702,14 @@ void GlfwOcctView::render()
 
 void GlfwOcctView::loadModel(const char* filepath)
 {
-  TopoDS_Shape shape;
-  BRep_Builder builder;
-  if (!BRepTools::Read(shape, filepath, builder)) { throw std::runtime_error("Failed to read BREP file"); }
+  TopoDS_Shape  shape;
+  BRep_Builder  builder;
+  if (!BRepTools::Read(shape, filepath, builder))
+    throw std::runtime_error("Failed to read BREP file");
+
   Message::DefaultMessenger()->Send(TCollection_AsciiString("Loaded file: ") + filepath + "\n", Message_Info);
 
-  Handle(AIS_Shape) aisShape = new AIS_Shape(shape);
-  // myContext->Display(aisShape, Standard_True);
-  myContext->Display(aisShape, AIS_Shaded, 0, false);
+  Handle(AIS_InteractiveObject) quadShape = new AIS_QuadShape(shape);
+  myContext->Display(quadShape, AIS_Shaded, 0, false);
 }
+
