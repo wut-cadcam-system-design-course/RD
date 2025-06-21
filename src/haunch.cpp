@@ -81,7 +81,7 @@ std::vector<std::pair<TopoDS_Face, gp_Dir>> CollectPlaneFaces(const TopoDS_Shape
     return planeFaces;
 }
 
-void ProcessShapeFacesForParallelPlanes(const TopoDS_Shape& shape, float max_distance)
+void ProcessShapeFacesForParallelPlanes(const Handle(AIS_InteractiveContext)& context, const TopoDS_Shape& shape, float max_distance)
 {
     std::cout << "Processing Shape...\n";
 
@@ -104,7 +104,28 @@ void ProcessShapeFacesForParallelPlanes(const TopoDS_Shape& shape, float max_dis
                 {
                     if (HaveSameVertices(face1, face2, distance))
                     {
-                        std::cout << "Found parallel, close faces with same vertices\n";
+                        // std::cout << "Found parallel, close faces with same vertices\n";
+                        Handle(AIS_Shape) aisFace1 = new AIS_Shape(face1);
+                        Handle(AIS_Shape) aisFace2 = new AIS_Shape(face2);
+
+                        context->SetColor(aisFace1, Quantity_NOC_RED, Standard_False);
+                        context->SetColor(aisFace2, Quantity_NOC_RED, Standard_False);
+
+                        // Set to shaded mode to fill faces with color
+                        context->SetDisplayMode(aisFace1, AIS_Shaded, Standard_False);
+                        context->SetDisplayMode(aisFace2, AIS_Shaded, Standard_False);
+
+                        // Optional: hide edges for pure fill
+                        Handle(Prs3d_Drawer) drawer1 = aisFace1->Attributes();
+                        Handle(Prs3d_Drawer) drawer2 = aisFace2->Attributes();
+                        drawer1->SetFaceBoundaryDraw(false);
+                        drawer2->SetFaceBoundaryDraw(false);
+
+                        // Display and update
+                        context->Display(aisFace1, Standard_False);
+                        context->Display(aisFace2, Standard_False);
+                        context->Redisplay(aisFace1, Standard_False);
+                        context->Redisplay(aisFace2, Standard_False);
                     }
                 }
             }
@@ -125,6 +146,6 @@ void ProcessDisplayedShapes(const Handle(AIS_InteractiveContext)& context, float
             continue;
 
         const TopoDS_Shape& shape = aisShape->Shape();
-        ProcessShapeFacesForParallelPlanes(shape, max_distance);
+        ProcessShapeFacesForParallelPlanes(context, shape, max_distance);
     }
 }
