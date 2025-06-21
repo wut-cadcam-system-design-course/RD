@@ -27,5 +27,5 @@
 bool GetFacePlaneNormal(const TopoDS_Face& face, gp_Dir& outNormal);
 bool HaveSameVertices(const TopoDS_Face& face1, const TopoDS_Face& face2, float d);
 std::vector<std::pair<TopoDS_Face, gp_Dir>> CollectPlaneFaces(const TopoDS_Shape& shape);
-void ProcessShapeFacesForParallelPlanes(const TopoDS_Shape& shape, float max_distance);
+void ProcessShapeFacesForParallelPlanes(const Handle(AIS_InteractiveContext)& context, const TopoDS_Shape& shape, float max_distance);
 void ProcessDisplayedShapes(const Handle(AIS_InteractiveContext)& context, float max_distance);

@@ -306,7 +306,7 @@ void GlfwOcctView::initDemoScene()
       aGlInfo += TCollection_AsciiString("  ") + aValueIter.Key() + ": " + aValueIter.Value();
     }
   }
-  Message::DefaultMessenger()->Send(TCollection_AsciiString("OpenGL info:\n") + aGlInfo, Message_Info);
+  // Message::DefaultMessenger()->Send(TCollection_AsciiString("OpenGL info:\n") + aGlInfo, Message_Info);
 }
 
 // ================================================================
@@ -543,26 +543,6 @@ void GlfwOcctView::render()
       else { printf("Error: %s\n", NFD_GetError()); }
     }
     ImGui::Spacing();
-    if (ImGui::Button("Iterate faces", ImVec2(avail.x, 0)))
-    {
-      AIS_ListOfInteractive aList;
-      myContext->DisplayedObjects(aList);
-      for (AIS_ListIteratorOfListOfInteractive it(aList); it.More(); it.Next())
-      {
-        Handle(AIS_InteractiveObject) io = it.Value();
-        Handle(AIS_Shape) aisShape       = Handle(AIS_Shape)::DownCast(io);
-        if (aisShape.IsNull()) continue;
-
-        const TopoDS_Shape& shape = aisShape->Shape();
-        std::cout << "Processing Shape...\n";
-
-        // Explore faces
-        for (TopExp_Explorer faceExp(shape, TopAbs_FACE); faceExp.More(); faceExp.Next())
-        {
-          std::cout << "  Found a face\n";
-        }
-      }
-    }
     static float dist = 50.f;
     ImGui::DragFloat("haunch max distance", &dist, 0.5f, 1.0f, 60.f, "%.0f");
     if (ImGui::Button("Iterate faces", ImVec2(avail.x, 0))) { ProcessDisplayedShapes(myContext, dist); }
