@@ -10,7 +10,7 @@ bool GetFacePlaneNormal(const TopoDS_Face& face, gp_Dir& outNormal)
     if (!plane.IsNull())
     {
       outNormal = plane->Pln().Axis().Direction();
-      //std::cout << "Normal: " << outNormal.X() << " " << outNormal.Y() << " " << outNormal.Z() << "\n";
+      // std::cout << "Normal: " << outNormal.X() << " " << outNormal.Y() << " " << outNormal.Z() << "\n";
       return true;
     }
   }
@@ -43,15 +43,17 @@ bool HaveSameVertices(const TopoDS_Face& face1, const TopoDS_Face& face2, float 
       const gp_Pnt& p2 = BRep_Tool::Pnt(TopoDS::Vertex(verts2(j)));
 
       gp_Vec delta(p1, p2);
-      Standard_Real normalDistance = std::abs(delta.Dot(gp_Vec(normal)));
+      Standard_Real normalDistance = delta.Dot(gp_Vec(normal));
 
       // Lateral difference (should be near zero if p2 is directly offset along the normal)
       gp_Vec lateral = delta - normalDistance * gp_Vec(normal);
+      // std::cout << "lateral " << lateral.Magnitude() << "\n";
       if (lateral.Magnitude() > 1e-4)
         continue;
 
       // Check if distance is within expected offset ± tolerance
-      if (std::abs(normalDistance - d) < 1e-4)
+      // std::cout << normalDistance << " " << d << "\n";
+      if (std::abs(std::abs(normalDistance) - d) < 1e-4)
       {
         foundMatch = true;
         break;
@@ -91,17 +93,20 @@ void ProcessShapeFacesForParallelPlanes(const Handle(AIS_InteractiveContext)& co
     {
         for (size_t j = i + 1; j < planeFaces.size(); ++j)
         {
+            // std::cout << "pair " << i << " " << j << "\n";
             const auto& [face1, normal1] = planeFaces[i];
             const auto& [face2, normal2] = planeFaces[j];
 
             if (normal1.IsParallel(normal2, Precision::Angular()))
             {
+                // std::cout<< "parallel!\n"; 
                 gp_Pnt p1 = BRep_Tool::Surface(face1)->Value(0.0, 0.0);
                 gp_Pnt p2 = BRep_Tool::Surface(face2)->Value(0.0, 0.0);
                 Standard_Real distance = p1.Distance(p2);
-
+                // std::cout << "dist " << distance << "\n";
                 if (distance <= max_distance)
                 {
+                    // std::cout << "dist " << distance << "\n";
                     if (HaveSameVertices(face1, face2, distance))
                     {
                         // std::cout << "Found parallel, close faces with same vertices\n";
