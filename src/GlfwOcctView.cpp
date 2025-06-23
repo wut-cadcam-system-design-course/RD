@@ -543,9 +543,9 @@ void GlfwOcctView::render()
       else { printf("Error: %s\n", NFD_GetError()); }
     }
     ImGui::Spacing();
-    static float dist = 50.f;
+    static float dist = 20.f;
     ImGui::DragFloat("haunch max distance", &dist, 0.5f, 1.0f, 60.f, "%.0f");
-    if (ImGui::Button("Iterate faces", ImVec2(avail.x, 0))) { ProcessDisplayedShapes(myContext, dist); }
+    if (ImGui::Button("Find haunches", ImVec2(avail.x, 0))) { ProcessDisplayedShapes(myContext, dist); }
   }
   ImGui::End();
   //
